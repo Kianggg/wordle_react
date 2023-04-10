@@ -1,0 +1,319 @@
+<html>
+  <script src="https://code.jquery.com/jquery-3.6.3.js"></script>
+
+  <head>
+    <!-- CSS and Font -->
+    <link href="styles.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Gaegu">
+    <!-- Site Title -->
+    <title>Wordle</title>
+  </head>
+
+  <body>
+    <span id="debug">
+    </span>
+    <div id="gameboard" class="grid-container">
+    </div>
+    <div id="guesses">
+    </div>
+  </body>
+
+  <script>
+    /* URL stem for the  API I'm using: Free Dictionary API */
+    /* The full path is: "https://api.dictionaryapi.dev/api/v2/entries/en/YourWordGoesHere" */
+    const dictionary = "https://api.dictionaryapi.dev/api/v2/entries/en/";
+
+    /* List of possible answer words that Wordle can use */
+    /* IIRC this is how it was originally set up, with a list of 2,000 words curated by Josh Wardle */
+    const possibleSolutions = [
+        "abate",
+        "abuzz",
+        "affix",
+        "agaze",
+        "agate",
+        "amaze",
+        "annex",
+        "apple",
+        "axiom",
+        "bangs",
+        "barge",
+        "basic",
+        "beast",
+        "beard",
+        "beefy",
+        "being",
+        "bosom",
+        "block",
+        "bumpy",
+        "cabal",
+        "cacao",
+        "cache",
+        "cadet",
+        "camel",
+        "campy",
+        "candy",
+        "caper",
+        "cases",
+        "cause",
+        "ceded",
+        "chair",
+        "chart",
+        "choke",
+        "chump",
+        "chunk",
+        "clamp",
+        "clank",
+        "clasp",
+        "clean",
+        "clear",
+        "clove",
+        "clump",
+        "coded",
+    ];
+
+    /* Hide debug */
+    $("#debug").hide();
+
+    /* Populate game board */
+    let numRows = 6;
+    let numColumns = 5;
+    for (let i = 0; i < numRows; i++)
+    {
+      $("#gameboard").append('<row class="grid-item"></row>');
+    }
+    for (let n = 0; n < numColumns; n++)
+    {
+      $("row").append('<div id="letter_tile" class="blank"></div>');
+    }
+
+    /* Set row IDs */
+    $("row").each(function(index) {
+      $(this).attr("id", index);
+    });
+
+    /* Create array of guessed letters */
+    var alphabet = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'];
+    $("#guesses").append('<row id="guessed_letters" class="grid-item"></row>');
+    for (let i = 0; i < alphabet.length; i++) {
+      $("#guessed_letters").append('<div id="guessed_letter_tile" class="' + alphabet[i] + '">' + alphabet[i] + '</div>');
+    } 
+
+    /* Set a word to guess */
+    var solution = possibleSolutions[Math.floor(Math.random() * possibleSolutions.length)];
+
+    /* Create array of guessed letters */
+    var guessedLetters = [];
+
+    /* Print solution to console for debugging */
+    console.log("The word to guess is: " + solution);
+
+    /* Setting up the first turn */
+    let turn = 0;
+    let gameActive = true;
+    let gameOver = false;
+
+    /* Handling key presses */
+    $(document).keydown(function(e) {
+        /* Toggle debug mode with Shift */
+        if (e.which == 16) {
+          console.log(e.which);
+          $("#debug").toggle();
+        }
+
+        /* Update debug mode message */
+        updateDebug();
+
+        /* Only work if game is active */
+        if (!gameActive) {
+          return;
+        }
+
+        /* Reset the game if necessary */
+        if (gameOver) {
+          resetGame();
+          return;
+        }
+
+        var keycode = e.which;
+
+        // Check for alphabetical
+        if (keycode >= '65' && keycode <= '90') {
+
+          // Iterate over the letters in the row to see where we're at
+          var letters = $("#" + turn).children();
+          for (let i = 0; i < letters.length; i++) {
+              if (letters[i].innerHTML == '')
+              {
+                letters[i].innerHTML = e.key.toLowerCase();
+                pulseLetter(i);
+                return;
+              }
+          }
+        }
+        // Check for delete
+        else if ((keycode == 8) || (keycode == 46)) {
+          var letters = $("#" + turn).children();
+          for (let i = letters.length - 1; i >= 0; i--) {
+            if (letters[i].innerHTML != '')
+            {
+              letters[i].innerHTML = '';
+              return;
+            }
+          }
+        }
+        // Check for enter
+        else if (keycode == 13) {
+          // Decativate inputs until program is fninshed checking the guess
+          gameActive = false;
+
+          // Construct guess
+          let guess = [];
+          var letters = $("#" + turn).children();
+          for (let i = 0; i < letters.length; i++) {
+              if (letters[i].innerHTML != '')
+              {
+                guess.push(letters[i].innerHTML);
+              }
+          }
+
+          // Validate guess and send error messages
+          if (guess.length != 5) {
+            shakeRow();
+            create_alert("Not enough letters!");
+            gameActive = true;
+            return;
+          }
+          // Check to see if it is a legal word
+          else if (!legalWord(guess.join(''))) {
+            shakeRow();
+            create_alert("Not in word list!");
+            gameActive = true;
+            return;
+          }
+          // Light up the letters to give hints
+          else {
+            var letters = $("#" + turn).children();
+            var points = 0;
+
+            for (let i = 0; i < letters.length; i++) {
+              if (guess[i] == solution[i])
+              {
+                letters[i].setAttribute("class", "hot");
+                $("." + guess[i] + "").attr("class", "hot");
+                points++;
+              }
+              else if (solution.indexOf(guess[i]) >= 0) {
+                letters[i].setAttribute("class", "warm");
+                $("." + guess[i] + "").attr("class", "warm");
+              }
+              else {
+                letters[i].setAttribute("class", "cold");
+                $("." + guess[i] + "").attr("class", "cold");
+              }
+            }
+
+            turn += 1;
+            updateDebug();
+          }
+
+          // Check for game end
+          if (points == 5) {
+            endGame(0);
+          }
+          else if (turn >= 6) {
+            endGame(1);
+          }
+
+          gameActive = true;
+          updateDebug();
+        }
+        else { return; }
+    });
+
+    // Checks to see if the given word is in the acceptable word list
+    // Returns true or false
+    function legalWord(guess) {
+      var myRequest = new XMLHttpRequest();
+      var myFile = dictionary + guess;
+      var legal = false;
+      myRequest.onreadystatechange = function() {
+          if (this.readyState == 4 && this.status == 200) {
+            legal = true;
+          }
+      };
+      myRequest.open("GET", myFile, false);
+      myRequest.send();
+      return legal;
+    }
+
+    // Graphical feedback when player guesses a non-word
+    function shakeRow() {
+      $("#" + turn).addClass('shaking');
+      setTimeout(function() {
+        $("#" + turn).removeClass('shaking');
+      }, 1000);
+    }
+
+    // Graphical feedback when player inputs a letter
+    function pulseLetter(index) {
+      let letter = $("#" + turn).children().eq(index);
+      letter.addClass('pulsing');
+      setTimeout(function() {
+        letter.removeClass('pulsing');
+      }, 250);
+    }
+
+    // It updates the debug log
+    function updateDebug() {
+      $("#debug").html("Word: " + solution + "<br> Turn: " + turn + "<br> gameActive: " + gameActive + "<br> gameOver: " + gameOver);
+    }
+
+    /* Ending the game */
+    /* 0 is win, 1 is lose */ 
+    function endGame(result) {
+      if (result == 0) {
+        alert("You win! Type any letter to play again!");
+      }
+      else {
+        alert("The word was: " + solution + " -- Type any letter to play again!")
+      }
+      gameActive = true;
+      gameOver = true;
+      updateDebug();
+    };
+
+    /* Reset the game */
+    function resetGame()
+    {
+      /* Clear all tiles */
+      $("div #letter_tile").each(function() {
+        $(this).html("");
+        $(this).attr("class", "blank");
+      });
+
+      /* Reset guessed letters */
+      $("#guessed_letters").remove();
+      $("#guesses").append('<row id="guessed_letters" class="grid-item"></row>');
+      for (let i = 0; i < alphabet.length; i++) {
+        $("#guessed_letters").append('<div id="guessed_letter_tile" class="' + alphabet[i] + '">' + alphabet[i] + '</div>');
+      } 
+
+      /* Select new word to guess */
+      solution = possibleSolutions[Math.floor(Math.random() * possibleSolutions.length)];
+      console.log("New word to guess is: " + solution)
+
+      /* Reset variables */
+      turn = 0;
+      gameOver = false;
+      updateDebug();
+    }
+
+    /* Creates an alert that isn't the normal default one */
+    function create_alert(message) {
+      let alert = document.createElement('div');
+      alert.setAttribute("id", "announcement");
+      alert.innerHTML = message;
+      $("#gameboard").prepend(alert);
+    }
+  </script>
+</html>
